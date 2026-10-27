@@ -1,0 +1,29 @@
+services:
+  fetcher:
+    image: flight-tracker-fetcher
+    profiles: ["fetcher"]
+    cpus: 0.50
+    mem_limit: 64m
+    memswap_limit: 64m
+    build:
+      context: ./fetcher
+    environment:
+      PORT: 8081
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-standalone}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://flightapp:unused@10.20.0.10:5432/flightdb}
+      AMQP_URL: ${AMQP_URL:-amqp://${RABBITMQ_USER:-flightapp}:${RABBITMQ_PASSWORD:-unused}@10.20.0.10:5672/}
+      FLIGHT_API_URL: ${FLIGHT_API_URL:-https://api.adsb.lol/v2/lat/51.75/lon/19/dist/250}
+      FLIGHT_API_CACHE_SEC: ${FLIGHT_API_CACHE_SEC:-300}
+    ports:
+      - "10.20.0.11:8081:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8081/health >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped

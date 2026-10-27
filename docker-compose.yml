@@ -1,0 +1,164 @@
+services:
+  db:
+    image: flight-tracker-postgres
+    build:
+      context: .
+      dockerfile: database/Dockerfile
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-flightdb}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      APP_DB_USER: ${APP_DB_USER:-flightapp}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?APP_DB_PASSWORD must be set in .env}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-standalone}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+      - ./database/extensions:/opt/flight-tracker/database/extensions:ro
+      - ./configs/postgresql:/etc/postgresql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    profiles: ["rabbitmq"]
+    image: rabbitmq:3.13-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-flightapp}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-unused}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    profiles: ["redis"]
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:-unused}"]
+    volumes:
+      - redis-data:/data
+      - ./configs/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-unused}
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  fetcher:
+    build:
+      context: ./fetcher
+    restart: unless-stopped
+    environment:
+      PORT: 8081
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-standalone}
+      DATABASE_URL: postgresql://${APP_DB_USER:-flightapp}:${APP_DB_PASSWORD:?APP_DB_PASSWORD must be set in .env}@db:5432/${POSTGRES_DB:-flightdb}
+      AMQP_URL: ${AMQP_URL:-amqp://${RABBITMQ_USER:-flightapp}:${RABBITMQ_PASSWORD:-unused}@rabbitmq:5672/}
+      FLIGHT_API_URL: ${FLIGHT_API_URL:-https://api.adsb.lol/v2/lat/51.75/lon/19/dist/250}
+      FLIGHT_API_CACHE_SEC: ${FLIGHT_API_CACHE_SEC:-300}
+    ports:
+      - "${FETCHER_PORT:-8081}:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8081/health >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+        required: false
+
+  migrate:
+    image: flight-tracker-history:local
+    build:
+      context: .
+      dockerfile: history/Dockerfile
+    command: ["python", "-m", "history.app.db.migrate"]
+    environment:
+      DATABASE_URL: postgresql://${APP_DB_USER:?APP_DB_USER must be set in .env}:${APP_DB_PASSWORD:?APP_DB_PASSWORD must be set in .env}@db:5432/${POSTGRES_DB:-flightdb}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-standalone}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  history:
+    image: flight-tracker-history:local
+    build:
+      context: .
+      dockerfile: history/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${APP_DB_USER:?APP_DB_USER must be set in .env}:${APP_DB_PASSWORD:?APP_DB_PASSWORD must be set in .env}@db:5432/${POSTGRES_DB:-flightdb}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-standalone}
+      AMQP_URL: ${AMQP_URL:-amqp://${RABBITMQ_USER:-flightapp}:${RABBITMQ_PASSWORD:-unused}@rabbitmq:5672/}
+      REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD:-unused}@redis:6379/0}
+      POLL_INTERVAL_SEC: ${POLL_INTERVAL_SEC:-300}
+      SESSION_TTL_SEC: ${SESSION_TTL_SEC:-2592000}
+    expose:
+      - "8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -m
+        - history.app.healthcheck
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  collector:
+    image: flight-tracker-history:local
+    build:
+      context: .
+      dockerfile: history/Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "history.app.worker"]
+    environment:
+      DATABASE_URL: postgresql://${APP_DB_USER:?APP_DB_USER must be set in .env}:${APP_DB_PASSWORD:?APP_DB_PASSWORD must be set in .env}@db:5432/${POSTGRES_DB:-flightdb}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-standalone}
+      AMQP_URL: ${AMQP_URL:-amqp://${RABBITMQ_USER:-flightapp}:${RABBITMQ_PASSWORD:-unused}@rabbitmq:5672/}
+      FETCHER_TIMEOUT_SEC: ${FETCHER_TIMEOUT_SEC:-30}
+      POLL_INTERVAL_SEC: ${POLL_INTERVAL_SEC:-300}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+        required: false
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:80"
+    depends_on:
+      history:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/ >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  redis-data:

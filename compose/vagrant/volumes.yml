@@ -1,0 +1,4 @@
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  redis-data:

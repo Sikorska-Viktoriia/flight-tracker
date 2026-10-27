@@ -1,0 +1,26 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-alpine
+    profiles: ["rabbitmq"]
+    cpus: 0.50
+    mem_limit: 256m
+    memswap_limit: 256m
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-flightapp}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-unused}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - ./configs/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    ports:
+      - "10.20.0.10:5672:5672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped

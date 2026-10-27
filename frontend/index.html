@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1220">
+  <title>Airspace — Flight Tracker</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="preconnect" href="https://tile.openstreetmap.org">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/assets/css/app.css?v=3">
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script defer src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <script defer src="/assets/js/app.js?v=3"></script>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">✈</span> AIRSPACE</div>
+    <div class="topbar-actions">
+      <button class="theme-toggle" id="theme-toggle" type="button">Light mode</button>
+      <div class="topbar-meta">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="connection-status">Connecting to live data</span>
+      </div>
+    </div>
+  </header>
+  <main>
+    <section class="page-heading" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">Live air traffic</p>
+        <h1 id="page-title">Central Europe</h1>
+        <p class="subtitle" id="updated">Waiting for the first flight snapshot…</p>
+      </div>
+      <span class="source-tag">Data source&nbsp; · &nbsp;ADS-B.lol</span>
+    </section>
+
+    <section class="metrics" aria-label="Flight statistics">
+      <article class="metric">
+        <div class="metric-label">Aircraft airborne <span class="metric-icon" aria-hidden="true">↗</span></div>
+        <strong class="metric-value" id="total">—</strong>
+      </article>
+      <article class="metric">
+        <div class="metric-label">Average speed <span class="metric-icon" aria-hidden="true">◉</span></div>
+        <strong class="metric-value" id="speed">—<span class="metric-unit">m/s</span></strong>
+      </article>
+      <article class="metric">
+        <div class="metric-label">Highest altitude <span class="metric-icon" aria-hidden="true">↟</span></div>
+        <strong class="metric-value" id="altitude">—<span class="metric-unit">m</span></strong>
+      </article>
+      <article class="metric">
+        <div class="metric-label">Highest aircraft <span class="metric-icon" aria-hidden="true">⌁</span></div>
+        <strong class="metric-value" id="callsign">—</strong>
+      </article>
+    </section>
+
+    <p id="error" role="status" aria-live="polite"></p>
+
+    <section class="panel map-panel" aria-labelledby="map-title">
+      <div class="panel-heading">
+        <div>
+          <h2 id="map-title">Live flight map</h2>
+          <p class="panel-caption">Aircraft positions and headings across the region</p>
+        </div>
+        <div class="map-live" id="map-status">Loading aircraft positions…</div>
+      </div>
+      <div class="map-toolbar" aria-label="Aircraft map filters">
+        <label class="search-control" for="aircraft-search">
+          <span>Find aircraft</span>
+          <input id="aircraft-search" type="search" list="aircraft-suggestions"
+                 placeholder="Callsign or ICAO hex" autocomplete="off">
+          <datalist id="aircraft-suggestions"></datalist>
+        </label>
+        <label class="filter-control" for="aircraft-category">
+          <span>Aircraft class</span>
+          <select id="aircraft-category">
+            <option value="all">All classes</option>
+            <option value="light">Light (A1)</option>
+            <option value="small">Small (A2)</option>
+            <option value="large">Large (A3/A4)</option>
+            <option value="heavy">Heavy (A5)</option>
+            <option value="high">High performance (A6)</option>
+            <option value="rotorcraft">Rotorcraft (A7)</option>
+          </select>
+        </label>
+        <label class="filter-control" for="altitude-band">
+          <span>Altitude band</span>
+          <select id="altitude-band">
+            <option value="all">Any altitude</option>
+            <option value="low">Low (&lt; 3,000 m)</option>
+            <option value="high">High (&gt; 10,000 m)</option>
+            <option value="minimum">Set minimum</option>
+          </select>
+        </label>
+        <label class="altitude-control" for="altitude-filter">
+          <span>Min altitude <strong id="altitude-value">0 m</strong></span>
+          <input id="altitude-filter" type="range" min="0" max="12000" step="500" value="0" disabled>
+        </label>
+        <label class="toggle-control">
+          <input id="emergency-filter" type="checkbox">
+          <span>Emergencies</span>
+        </label>
+        <button class="toolbar-button" id="trails-toggle" type="button" aria-pressed="true">
+          Trails on
+        </button>
+        <label class="filter-control" for="heatmap-range">
+          <span>Density window</span>
+          <select id="heatmap-range">
+            <option value="1">Last hour</option>
+            <option value="24">Last 24 hours</option>
+          </select>
+        </label>
+        <button class="toolbar-button" id="heatmap-toggle" type="button" aria-pressed="false">
+          Traffic heatmap
+        </button>
+      </div>
+      <div class="map-stage">
+        <div id="map" role="application" aria-label="Map showing live aircraft positions"></div>
+        <aside class="aircraft-drawer" id="aircraft-drawer" aria-label="Selected aircraft details" hidden>
+          <button class="drawer-close" id="drawer-close" type="button" aria-label="Close aircraft details">×</button>
+          <p class="eyebrow">Aircraft details</p>
+          <div class="drawer-title">
+            <span class="aircraft-silhouette" aria-hidden="true">✈</span>
+            <div><h3 id="detail-callsign">—</h3><p id="detail-type">Aircraft type unavailable</p></div>
+          </div>
+          <p class="route-note" id="detail-route">Route details are not included in the ADS-B data source.</p>
+          <dl class="telemetry-grid">
+            <div><dt>Altitude</dt><dd id="detail-altitude">—</dd></div>
+            <div><dt>Vertical rate</dt><dd id="detail-vertical">—</dd></div>
+            <div><dt>Ground speed</dt><dd id="detail-speed">—</dd></div>
+            <div><dt>Heading</dt><dd id="detail-heading">—</dd></div>
+            <div><dt>Coordinates</dt><dd id="detail-coordinates">—</dd></div>
+            <div><dt>ICAO hex</dt><dd id="detail-icao">—</dd></div>
+            <div><dt>Squawk</dt><dd id="detail-squawk">—</dd></div>
+            <div><dt>Observed</dt><dd id="detail-time">—</dd></div>
+          </dl>
+        </aside>
+      </div>
+      <div class="playback" aria-label="Flight history playback">
+        <div class="playback-controls">
+          <button class="toolbar-button" id="play-toggle" type="button" aria-pressed="false">Play</button>
+          <label class="speed-control" for="playback-speed">
+            <span>Speed</span>
+            <select id="playback-speed">
+              <option value="1">1×</option>
+              <option value="5">5×</option>
+              <option value="10">10×</option>
+            </select>
+          </label>
+          <button class="toolbar-button" id="live-toggle" type="button">Live</button>
+          <span class="playback-time" id="playback-time">Loading recent history…</span>
+        </div>
+        <input id="timeline-slider" type="range" min="0" max="0" value="0"
+               aria-label="Flight history timeline">
+        <p class="panel-caption">Up to 60 minutes of saved aircraft positions · select a point or press Play</p>
+      </div>
+    </section>
+
+    <div class="lower-grid">
+      <section class="panel" aria-labelledby="chart-title">
+        <div class="panel-heading">
+          <div>
+            <h2 id="chart-title">Traffic over time</h2>
+            <p class="panel-caption">Airborne aircraft and average altitude</p>
+          </div>
+          <label class="interval-control" for="chart-interval">
+            <span>Range</span>
+            <select id="chart-interval">
+              <option value="15">15 min</option>
+              <option value="60" selected>1 hour</option>
+              <option value="360">6 hours</option>
+              <option value="1440">24 hours</option>
+            </select>
+          </label>
+        </div>
+        <div class="chart-wrap"><canvas id="chart" aria-label="Chart of aircraft count and average altitude over time"></canvas></div>
+      </section>
+      <section class="panel" aria-labelledby="aircraft-title">
+        <div class="panel-heading">
+          <div>
+            <h2 id="aircraft-title">Live aircraft</h2>
+            <p class="panel-caption">Select a row to center the map and view telemetry</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col"><button class="sort-button" data-sort="callsign" type="button">Callsign</button></th>
+                <th scope="col">ICAO</th>
+                <th scope="col"><button class="sort-button" data-sort="altitude_m" type="button">Altitude</button></th>
+                <th scope="col"><button class="sort-button" data-sort="speed_mps" type="button">Speed</button></th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody id="aircraft-table">
+              <tr><td class="empty-cell" colspan="5">Loading aircraft…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+    <footer>Flight data refreshes every 15 seconds. Map tiles © OpenStreetMap contributors © CARTO.</footer>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,36 @@
+# BEGIN flight-tracker-vagrant
+Host bastion
+    HostName ${BASTION_HOST}
+    User flight-jump
+    IdentityFile "${IDENTITY_FILE}"
+    IdentitiesOnly yes
+    HostKeyAlias flight-tracker-bastion
+Host database
+    HostName 10.20.0.10
+    User vagrant
+    IdentityFile "${IDENTITY_FILE}"
+    IdentitiesOnly yes
+    HostKeyAlias flight-tracker-database
+    ProxyJump bastion
+Host fetcher
+    HostName 10.20.0.11
+    User vagrant
+    IdentityFile "${IDENTITY_FILE}"
+    IdentitiesOnly yes
+    HostKeyAlias flight-tracker-fetcher
+    ProxyJump bastion
+Host history
+    HostName 10.20.0.12
+    User vagrant
+    IdentityFile "${IDENTITY_FILE}"
+    IdentitiesOnly yes
+    HostKeyAlias flight-tracker-history
+    ProxyJump bastion
+Host ui
+    HostName 10.20.0.13
+    User vagrant
+    IdentityFile "${IDENTITY_FILE}"
+    IdentitiesOnly yes
+    HostKeyAlias flight-tracker-ui
+    ProxyJump bastion
+# END flight-tracker-vagrant

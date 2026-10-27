@@ -1,0 +1,35 @@
+services:
+  db:
+    image: flight-tracker-postgres
+    profiles: ["database"]
+    build:
+      context: .
+      dockerfile: database/Dockerfile
+    cpus: 0.40
+    mem_limit: 256m
+    memswap_limit: 256m
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-flightdb}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-unused}
+      APP_DB_USER: ${APP_DB_USER:-flightapp}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-unused}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-standalone}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+      - ./database/extensions:/opt/flight-tracker/database/extensions:ro
+      - ./configs/postgresql:/etc/postgresql:ro
+    ports:
+      - "10.20.0.10:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U \"$${POSTGRES_USER}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped

@@ -1,0 +1,17 @@
+[Unit]
+Description=Collect Flight Tracker VM metrics and container logs
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=vagrant
+Group=vagrant
+SupplementaryGroups=docker
+ExecStart=/usr/bin/bash /opt/flight-tracker/logger/collect-metrics.sh
+NoNewPrivileges=yes
+ProtectHome=read-only
+ReadWritePaths=/var/log/flight-tracker /var/lib/flight-tracker-logger
+
+[Install]
+WantedBy=multi-user.target

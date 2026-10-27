@@ -1,0 +1,20 @@
+services:
+  migrate:
+    image: flight-tracker-history
+    profiles: ["history"]
+    cpus: 0.90
+    mem_limit: 256m
+    memswap_limit: 256m
+    build:
+      context: .
+      dockerfile: history/Dockerfile
+    command: ["python", "-m", "history.app.db.migrate"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://flightapp:unused@10.20.0.10:5432/flightdb}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-standalone}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: "no"

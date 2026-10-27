@@ -1,0 +1,10 @@
+/var/log/flight-tracker/metrics.log /var/log/flight-tracker/containers/*/*.log {
+    su vagrant vagrant
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 vagrant vagrant
+}

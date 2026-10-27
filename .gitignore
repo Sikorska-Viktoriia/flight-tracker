@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.env
+.vagrant/
+.venv/
+history/.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+logger/public/id_ed25519.pub
+.env.local

@@ -1,0 +1,38 @@
+services:
+  history:
+    image: flight-tracker-history
+    profiles: ["history"]
+    cpus: 0.45
+    mem_limit: 192m
+    memswap_limit: 192m
+    build:
+      context: .
+      dockerfile: history/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://flightapp:unused@10.20.0.10:5432/flightdb}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-standalone}
+      AMQP_URL: ${AMQP_URL:-amqp://${RABBITMQ_USER:-flightapp}:${RABBITMQ_PASSWORD:-unused}@10.20.0.10:5672/}
+      REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD:-unused}@10.20.0.10:6379/0}
+      POLL_INTERVAL_SEC: ${POLL_INTERVAL_SEC:-300}
+      SESSION_TTL_SEC: ${SESSION_TTL_SEC:-2592000}
+      SERVE_FRONTEND: "false"
+    ports:
+      - "10.20.0.12:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -m
+        - history.app.healthcheck
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped

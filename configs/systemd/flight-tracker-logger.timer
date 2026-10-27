@@ -1,0 +1,10 @@
+[Unit]
+Description=Collect Flight Tracker metrics and logs every fifteen minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Unit=flight-tracker-logger.service
+
+[Install]
+WantedBy=timers.target

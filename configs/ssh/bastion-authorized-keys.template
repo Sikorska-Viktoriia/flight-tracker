@@ -1,0 +1,1 @@
+restrict,port-forwarding ${KEY_TYPE} ${KEY_DATA} flight-tracker-host-jump

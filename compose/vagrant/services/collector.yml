@@ -1,0 +1,26 @@
+services:
+  collector:
+    image: flight-tracker-history
+    profiles: ["history"]
+    cpus: 0.45
+    mem_limit: 128m
+    memswap_limit: 128m
+    build:
+      context: .
+      dockerfile: history/Dockerfile
+    command: ["python", "-m", "history.app.worker"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://flightapp:unused@10.20.0.10:5432/flightdb}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-standalone}
+      AMQP_URL: ${AMQP_URL:-amqp://${RABBITMQ_USER:-flightapp}:${RABBITMQ_PASSWORD:-unused}@10.20.0.10:5672/}
+      FETCHER_TIMEOUT_SEC: ${FETCHER_TIMEOUT_SEC:-30}
+      POLL_INTERVAL_SEC: ${POLL_INTERVAL_SEC:-300}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped

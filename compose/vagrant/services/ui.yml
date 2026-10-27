@@ -1,0 +1,23 @@
+services:
+  ui:
+    image: flight-tracker-ui
+    profiles: ["ui"]
+    cpus: 0.25
+    mem_limit: 32m
+    memswap_limit: 32m
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.vagrant
+    ports:
+      - "0.0.0.0:80:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/ >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
